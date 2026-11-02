@@ -1,3 +1,35 @@
+import { Conversation, type VoiceConversation } from '@elevenlabs/client';
+import type { ActionResult, ClientToolName, ConversationContext } from '../core/types.ts';
+import { BaseVoiceAdapter } from './base.ts';
+import type { DispatchTool, SessionTokenProvider } from './voice-types.ts';
+
+// Public SDK boundary. No PIN, Cloudflare details or therapy-specific rules in this module.
+type Session = VoiceConversation;
+const stale: ActionResult = {ok: false, code:'STALE_SESSION', message:'Diese Sprachsitzung ist nicht mehr aktiv.'};
+const toolNames: readonly ClientToolName[] = ['openInfo', 'openVideo', 'openLogbook', 'proposeLogEntry', 'confirmLogEntry', 'setProactivity'];
+
+// Some SDK versions type startSession() as a union of voice and text sessions,
+// even for an explicit WebRTC voice request. Narrow at runtime instead of casting.
+function canEndSession(value: unknown): value is {endSession(): Promise<void>} {
+  return typeof value === 'object' && value !== null &&
+    'endSession' in value && typeof value.endSession === 'function';
+}
+
+function isVoiceSession(value: unknown): value is VoiceConversation {
+  return typeof value === 'object' && value !== null &&
+    'setMicMuted' in value && typeof value.setMicMuted === 'function' &&
+    'setVolume' in value && typeof value.setVolume === 'function' &&
+    'endSession' in value && typeof value.endSession === 'function';
+}
+export class ElevenLabsAdapter extends BaseVoiceAdapter {
+  private session: Session | null = null;
+  private requestedMute = false;
+  private muteSerial = 0;
+  constructor(private tokenProvider: SessionTokenProvider, private dispatchTool: DispatchTool) { super(); }
+
+  async start(context: ConversationContext): Promise<void> {
+    const gen = this.begin(context);
+    if (gen === null) return;
     try {
       const conversationToken = await this.tokenProvider();
       if (!this.valid(gen)) return;
