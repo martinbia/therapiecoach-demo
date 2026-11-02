@@ -97,4 +97,44 @@ export class ElevenLabsAdapter extends BaseVoiceAdapter {
     await this.applyMute(muted, this.videoSuppressed);
   }
   protected async applyMute(userMuted: boolean, videoSuppressed: boolean): Promise<void> {
+       const gen = this.state.generationId;
+    const serial = ++this.muteSerial;
+    const effective = userMuted || videoSuppressed;
+    try {
+      // Both calls are made immediately, then awaited. Failure closes the voice session.
+      await Promise.all([
+        session.setMicMuted(effective),
+        session.setVolume({volume: effective ? 0 : 1}),
+      ]);
+      if (this.valid(gen) && serial === this.muteSerial) this.patch({userMuted, effectiveMuted:effective});
+    } catch {
+      if (this.valid(gen)) { this.emit({type:'error', code:'MUTE_FAILED', generationId:gen}); await this.stop(); }
+    }
+  }
+
+  stop(): Promise<void> {
+    // This part happens synchronously before any network, timer or SDK await.
+    if (this.state.phase === 'off' || this.state.phase === 'stopping') return Promise.resolve();
+    this.invalidate();
+    this.requestedMute = false;
+    ++this.muteSerial;
+    const session = this.session;
+    this.session = null;
+    if (session) {
+      // The SDK might reject due to network loss: never wait before blocking stale events.
+      try { session.setMicMuted(true); session.setVolume({volume:0}); } catch { /* SDK callback errors trigger onError; remain stopped */ }
+    }
+    const cleanup = session ? session.endSession().catch(() => undefined) : Promise.resolve();
+    const generationId = this.state.generationId;
+    // Voice is already locally invalidated; allow new explicit start only after cleanup.
+    return cleanup.then(() => { if (this.state.generationId === generationId && this.state.phase === 'stopping') this.patch({phase:'off'}); });
+  }
+  updateContext(context: ConversationContext): void {
+    this.context = context;
+    if (this.state.phase !== 'active' || !this.session) return;
+    try {
+      this.session.sendContextualUpdate(`UI-Kontext geändert: role=${context.role}; proactivity_enabled=${context.proactivityEnabled}. Keine proaktiven Äußerungen bei stummgeschaltetem oder beendetem Gespräch.`);
+    } catch { /* Advisory update only, never a security source of truth. */ }
+  }
+}
 
