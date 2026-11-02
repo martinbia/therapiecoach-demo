@@ -1,34 +1,16 @@
-import { Conversation, type VoiceConversation } from '@elevenlabs/client';
-import type { ActionResult, ClientToolName, ConversationContext } from '../core/types.ts';
-import { BaseVoiceAdapter } from './base.ts';
-import type { DispatchTool, SessionTokenProvider } from './voice-types.ts';
 
-// Public SDK boundary. No PIN, Cloudflare details or therapy-specific rules in this module.
-type Session = VoiceConversation;
-const stale: ActionResult = {ok: false, code:'STALE_SESSION', message:'Diese Sprachsitzung ist nicht mehr aktiv.'};
-const toolNames: readonly ClientToolName[] = ['openInfo', 'openVideo', 'openLogbook', 'proposeLogEntry', 'confirmLogEntry', 'setProactivity'];
-export class ElevenLabsAdapter extends BaseVoiceAdapter {
-  private session: Session | null = null;
-  private requestedMute = false;
-  private muteSerial = 0;
-  constructor(private tokenProvider: SessionTokenProvider, private dispatchTool: DispatchTool) { super(); }
-
-  async start(context: ConversationContext): Promise<void> {
-    const gen = this.begin(context);
-    if (gen === null) return;
-    try {
-      const conversationToken = await this.tokenProvider();
-      if (!this.valid(gen)) return;
-      if (!conversationToken) throw new Error('TOKEN_EMPTY');
-      // Tools are registered as a closed map; their responses are awaited by the provider.
-      const callback = (name: ClientToolName) => async (args: unknown): Promise<ActionResult> => {
-        if (!this.valid(gen) || this.state.phase !== 'active') return stale;
+    
+  
+      const callback = (name: ClientToolName) => async (args: unknown): Promise<string> => {
+        if (!this.valid(gen) || this.state.phase !== 'active') return JSON.stringify(stale);
         this.emit({type:'toolRequest', name, args, generationId:gen});
         const result = await this.dispatchTool(name, args, gen);
-        return this.valid(gen) ? result : stale;
+        // The provider SDK requires string/number/void, not an object.
+        // The JSON string retains the ActionResult schema for the agent.
+        return JSON.stringify(this.valid(gen) ? result : stale);
       };
-      const clientTools = Object.fromEntries(toolNames.map(name => [name, callback(name)])) as Record<ClientToolName, (args: unknown) => Promise<ActionResult>>;
-      const newSession: VoiceConversation = await Conversation.startSession({
+      const clientTools = Object.fromEntries(toolNames.map(name => [name, callback(name)])) as Record<ClientToolName, (args: unknown) => Promise<string>>;
+      const candidateSession = await Conversation.startSession({
         conversationToken,
         textOnly: false as const,
         connectionType: 'webrtc',
@@ -48,6 +30,11 @@ export class ElevenLabsAdapter extends BaseVoiceAdapter {
           if (this.valid(gen)) { this.fail(gen, 'PROVIDER_ERROR'); void this.stop(); }
         },
       });
+      if (!isVoiceSession(candidateSession)) {
+        await candidateSession.endSession().catch(() => undefined);
+        throw new Error('VOICE_SESSION_REQUIRED');
+      }
+      const newSession = candidateSession;
       if (!this.valid(gen)) {
         // Race: STOPP while startSession was still resolving.
         await Promise.allSettled([newSession.setMicMuted(true), newSession.setVolume({volume:0})]);
@@ -122,3 +109,4 @@ export class ElevenLabsAdapter extends BaseVoiceAdapter {
     } catch { /* Advisory update only, never a security source of truth. */ }
   }
 }
+
