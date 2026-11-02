@@ -1,33 +1,3 @@
-
-    
-  
-import { Conversation, type VoiceConversation } from '@elevenlabs/client';
-import type { ActionResult, ClientToolName, ConversationContext } from '../core/types.ts';
-import { BaseVoiceAdapter } from './base.ts';
-import type { DispatchTool, SessionTokenProvider } from './voice-types.ts';
-
-// Public SDK boundary. No PIN, Cloudflare details or therapy-specific rules in this module.
-type Session = VoiceConversation;
-const stale: ActionResult = {ok: false, code:'STALE_SESSION', message:'Diese Sprachsitzung ist nicht mehr aktiv.'};
-const toolNames: readonly ClientToolName[] = ['openInfo', 'openVideo', 'openLogbook', 'proposeLogEntry', 'confirmLogEntry', 'setProactivity'];
-
-// Some SDK versions type startSession() as a union of voice and text sessions,
-// even for an explicit WebRTC voice request. Narrow at runtime instead of casting.
-function isVoiceSession(value: unknown): value is VoiceConversation {
-  return typeof value === 'object' && value !== null &&
-    'setMicMuted' in value && typeof value.setMicMuted === 'function' &&
-    'setVolume' in value && typeof value.setVolume === 'function' &&
-    'endSession' in value && typeof value.endSession === 'function';
-}
-export class ElevenLabsAdapter extends BaseVoiceAdapter {
-  private session: Session | null = null;
-  private requestedMute = false;
-  private muteSerial = 0;
-  constructor(private tokenProvider: SessionTokenProvider, private dispatchTool: DispatchTool) { super(); }
-
-  async start(context: ConversationContext): Promise<void> {
-    const gen = this.begin(context);
-    if (gen === null) return;
     try {
       const conversationToken = await this.tokenProvider();
       if (!this.valid(gen)) return;
@@ -42,7 +12,9 @@ export class ElevenLabsAdapter extends BaseVoiceAdapter {
         return JSON.stringify(this.valid(gen) ? result : stale);
       };
       const clientTools = Object.fromEntries(toolNames.map(name => [name, callback(name)])) as Record<ClientToolName, (args: unknown) => Promise<string>>;
-      const candidateSession = await Conversation.startSession({
+      // Keep this as unknown until runtime checks finish; the SDK can type
+      // textOnly:false as VoiceConversation, making a negative type guard 'never'.
+      const candidateSession: unknown = await Conversation.startSession({
         conversationToken,
         textOnly: false as const,
         connectionType: 'webrtc',
@@ -63,7 +35,9 @@ export class ElevenLabsAdapter extends BaseVoiceAdapter {
         },
       });
       if (!isVoiceSession(candidateSession)) {
-        await candidateSession.endSession().catch(() => undefined);
+        if (canEndSession(candidateSession)) {
+          await candidateSession.endSession().catch(() => undefined);
+        }
         throw new Error('VOICE_SESSION_REQUIRED');
       }
       const newSession = candidateSession;
@@ -97,14 +71,18 @@ export class ElevenLabsAdapter extends BaseVoiceAdapter {
     await this.applyMute(muted, this.videoSuppressed);
   }
   protected async applyMute(userMuted: boolean, videoSuppressed: boolean): Promise<void> {
-       const gen = this.state.generationId;
+    if (this.state.phase !== 'active' && this.state.phase !== 'connecting') return;
+    this.requestedMute = userMuted;
+    const activeSession: VoiceConversation | null = this.session;
+    if (activeSession === null) return;
+    const gen = this.state.generationId;
     const serial = ++this.muteSerial;
     const effective = userMuted || videoSuppressed;
     try {
       // Both calls are made immediately, then awaited. Failure closes the voice session.
       await Promise.all([
-        session.setMicMuted(effective),
-        session.setVolume({volume: effective ? 0 : 1}),
+        activeSession.setMicMuted(effective),
+        activeSession.setVolume({volume: effective ? 0 : 1}),
       ]);
       if (this.valid(gen) && serial === this.muteSerial) this.patch({userMuted, effectiveMuted:effective});
     } catch {
@@ -118,13 +96,19 @@ export class ElevenLabsAdapter extends BaseVoiceAdapter {
     this.invalidate();
     this.requestedMute = false;
     ++this.muteSerial;
-    const session = this.session;
+    const endingSession: VoiceConversation | null = this.session;
     this.session = null;
-    if (session) {
+    if (endingSession !== null) {
       // The SDK might reject due to network loss: never wait before blocking stale events.
-      try { session.setMicMuted(true); session.setVolume({volume:0}); } catch { /* SDK callback errors trigger onError; remain stopped */ }
+      // Fail closed: request both mutes without holding up synchronous STOPP.
+      try {
+        void Promise.resolve(endingSession.setMicMuted(true)).catch(() => undefined);
+        void Promise.resolve(endingSession.setVolume({volume:0})).catch(() => undefined);
+      } catch { /* Already locally invalidated. */ }
     }
-    const cleanup = session ? session.endSession().catch(() => undefined) : Promise.resolve();
+    const cleanup = endingSession !== null
+      ? endingSession.endSession().catch(() => undefined)
+      : Promise.resolve();
     const generationId = this.state.generationId;
     // Voice is already locally invalidated; allow new explicit start only after cleanup.
     return cleanup.then(() => { if (this.state.generationId === generationId && this.state.phase === 'stopping') this.patch({phase:'off'}); });
@@ -137,4 +121,3 @@ export class ElevenLabsAdapter extends BaseVoiceAdapter {
     } catch { /* Advisory update only, never a security source of truth. */ }
   }
 }
-
