@@ -1,0 +1,76 @@
+{
+  "_comment": "Project-internal tool parameter schemas (NOT an ElevenLabs API import). API_CONTRACT.md v1.0, 2026-11-02.",
+  "tools": [
+    {
+      "name": "openInfo",
+      "type": "client",
+      "wait_for_response": true,
+      "description": "Open a permitted demo info topic in the local app, and report the actual client result.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["topicId"],
+        "properties": {"topicId": {"type": "string", "enum": ["stairs", "chair_rise"]}}
+      }
+    },
+    {
+      "name": "openVideo",
+      "type": "client",
+      "wait_for_response": true,
+      "description": "Show the permitted local demo video; do not promise autoplay.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["videoId"],
+        "properties": {"videoId": {"type": "string", "enum": ["stairs_demo", "chair_rise_demo"]}}
+      }
+    },
+    {
+      "name": "openLogbook",
+      "type": "client",
+      "wait_for_response": true,
+      "description": "Open the local in-memory demo logbook without modifying it.",
+      "parameters": {"type": "object", "additionalProperties": false, "required": [], "properties": {}}
+    },
+    {
+      "name": "proposeLogEntry",
+      "type": "client",
+      "wait_for_response": true,
+      "description": "Propose a fictitious exercise entry for explicit confirmation; do not save it.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exerciseId", "when", "comment"],
+        "properties": {
+          "exerciseId": {"type": "string", "enum": ["stairs", "chair_rise"]},
+          "when": {"type": "string", "minLength": 1, "maxLength": 80},
+          "comment": {"type": "string", "minLength": 0, "maxLength": 240}
+        }
+      }
+    },
+    {
+      "name": "confirmLogEntry",
+      "type": "client",
+      "wait_for_response": true,
+      "description": "Attempt confirmation/cancellation of pending demo entry. Browser validates separate final user confirmation or requires touch.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["confirmed"],
+        "properties": {"confirmed": {"type": "boolean"}}
+      }
+    },
+    {
+      "name": "setProactivity",
+      "type": "client",
+      "wait_for_response": true,
+      "description": "Enable or disable optional exercise follow-up only by user request; default disabled.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["enabled"],
+        "properties": {"enabled": {"type": "boolean"}}
+      }
+    }
+  ]
+}

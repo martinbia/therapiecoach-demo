@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-transform-types --test tests/*.test.ts",
+    "test": "npm run test:unit && npm run test:adapter",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "test:unit": "node --experimental-transform-types --test tests/access.test.ts tests/dispatcher.test.ts tests/voice.test.ts",
+    "test:adapter": "node --experimental-loader ./tests/sdk-mock-loader.mjs --experimental-transform-types --test tests/elevenlabs-adapter.test.ts"
   },
   "dependencies": {
     "@elevenlabs/client": "1.32.1"

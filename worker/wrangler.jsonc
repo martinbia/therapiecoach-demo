@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "pflegepfad-access-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-02",
+  "workers_dev": true,
+  "observability": {
+    "enabled": false
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ACCESS_LIMITER",
+        "class_name": "AccessLimiter"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-sqlite",
+      "new_sqlite_classes": [
+        "AccessLimiter"
+      ]
+    }
+  ],
+  "keep_vars": true
+}

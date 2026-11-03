@@ -52,14 +52,11 @@ export class ElevenLabsAdapter extends BaseVoiceAdapter {
         connectionType: 'webrtc',
         dynamicVariables: {role: context.role, proactivity_enabled: context.proactivityEnabled},
         clientTools,
-        onMessage: message => {
-          if (!this.valid(gen)) return;
-          // The SDK onMessage user callback represents the final user_transcript event.
-          // Tentative text and AI output are never confirmation evidence.
-          if (message.role === 'user' && typeof message.message === 'string') {
-            this.emit({type:'finalUserText', text: message.message, generationId:gen});
-          }
-        },
+        // Deliberately do NOT translate onMessage to finalUserText. The
+        // documented SDK callback can contain TENTATIVE user transcripts;
+        // neither role==='user' nor message text proves ASR finality.
+        // Until a verified final-only SDK event exists, voice tool confirmation
+        // is fail-closed and the user confirms proposed logbook entries by touch.
         onDisconnect: () => { if (this.valid(gen)) void this.stop(); },
         onError: () => {
           // Do not expose upstream details in UI or logs.

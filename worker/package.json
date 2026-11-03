@@ -1,0 +1,19 @@
+{
+  "name": "pflegepfad-access-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build:tests": "tsc",
+    "test": "npm run build:tests && node --test --test-concurrency=1 test/*.test.mjs",
+    "check": "npm run typecheck && npm test",
+    "deploy": "wrangler deploy",
+    "deploy:dry": "wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "wrangler": "^4.0.0"
+  }
+}

@@ -36,6 +36,17 @@ test('STOPP during delayed connection invalidates before promise settles',async(
   await task;
   assert.equal(mock.getState().phase,'off');
 });
+test('STOPP invalidates Voice BEFORE video pause can remove suppression',async()=>{
+  const {mock,dispatcher}=setup();
+  await mock.start(context);
+  await mock.setVideoSuppressed(true);
+  let phaseDuringPause='';
+  const media={stopAll(){phaseDuringPause=mock.getState().phase;void mock.setVideoSuppressed(false);}};
+  const safety=new SafetyController(mock,media,dispatcher);
+  safety.stopAll();
+  assert.equal(phaseDuringPause,'off');
+  assert.equal(mock.getState().phase,'off');
+});
 test('stale agent tool after STOPP is rejected',async()=>{
   const {mock,safety,store}=setup();
   await mock.start(context);

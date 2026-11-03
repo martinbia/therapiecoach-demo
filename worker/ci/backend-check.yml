@@ -1,0 +1,26 @@
+name: Backend Worker checks (no deployment)
+on:
+  push:
+    paths:
+      - 'worker/**'
+  pull_request:
+    paths:
+      - 'worker/**'
+  workflow_dispatch:
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm run check
+      - run: npm run deploy:dry
+        # No API tokens/secrets or network calls to ElevenLabs.

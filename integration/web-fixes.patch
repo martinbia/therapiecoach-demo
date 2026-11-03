@@ -1,0 +1,138 @@
+diff --git a/.github/workflows/frontend-pages.yml b/.github/workflows/frontend-pages.yml
+index ab1a99f..4ab90ad 100644
+--- a/.github/workflows/frontend-pages.yml
++++ b/.github/workflows/frontend-pages.yml
+@@ -4,10 +4,18 @@ on:
+     branches: [main, frontend]
+     paths:
+       - 'web/**'
++      - 'worker/**'
++      - 'agent/**'
++      - 'tests/**'
++      - 'docs/**'
+       - '.github/workflows/frontend-pages.yml'
+   pull_request:
+     paths:
+       - 'web/**'
++      - 'worker/**'
++      - 'agent/**'
++      - 'tests/**'
++      - 'docs/**'
+       - '.github/workflows/frontend-pages.yml'
+   workflow_dispatch:
+ 
+@@ -30,15 +38,28 @@ jobs:
+         uses: actions/setup-node@v4
+         with:
+           node-version: '22'
+-      # The source ZIP is intentionally delivered without a fabricated lockfile.
+-      # Commit the npm-generated package-lock.json after the first successful install,
+-      # then switch this step to npm ci for fully reproducible installs.
+-      - name: Install pinned direct dependencies
++      # After npm-generated package-lock.json is committed, switch to npm ci.
++      - name: Install frontend dependencies
+         run: npm install --no-audit --no-fund
+       - name: TypeScript check
+         run: npm run typecheck
+       - name: Contract and state tests
+         run: npm test
++      - name: Verify API contract across web, worker and agent (offline)
++        working-directory: .
++        run: |
++          python3 agent/verify_agent_contract.py
++          python3 -m unittest discover -s tests -p 'test_*.py' -v
++          python3 tests/preflight.py --root .
++      - name: Install Worker development dependencies (no deployment)
++        working-directory: worker
++        run: npm install --no-audit --no-fund
++      - name: Worker TypeScript and security/rate-limit tests
++        working-directory: worker
++        run: npm run check
++      - name: Full offline HTTP/Token/SDK/Dispatcher integration
++        working-directory: .
++        run: node --experimental-loader ./web/tests/sdk-mock-loader.mjs --experimental-transform-types --test tests/end_to_end.test.mjs
+       - name: Build static PWA
+         env:
+           VITE_VOICE_MODE: ${{ vars.VITE_VOICE_MODE || 'mock' }}
+diff --git a/web/package.json b/web/package.json
+index 98c6524..6ba79f9 100644
+--- a/web/package.json
++++ b/web/package.json
+@@ -6,9 +6,11 @@
+   "scripts": {
+     "dev": "vite --host 0.0.0.0",
+     "typecheck": "tsc --noEmit",
+-    "test": "node --experimental-transform-types --test tests/*.test.ts",
++    "test": "npm run test:unit && npm run test:adapter",
+     "build": "tsc --noEmit && vite build",
+-    "preview": "vite preview --host 0.0.0.0"
++    "preview": "vite preview --host 0.0.0.0",
++    "test:unit": "node --experimental-transform-types --test tests/access.test.ts tests/dispatcher.test.ts tests/voice.test.ts",
++    "test:adapter": "node --experimental-loader ./tests/sdk-mock-loader.mjs --experimental-transform-types --test tests/elevenlabs-adapter.test.ts"
+   },
+   "dependencies": {
+     "@elevenlabs/client": "1.32.1"
+diff --git a/web/src/core/safety.ts b/web/src/core/safety.ts
+index 423f725..33d402d 100644
+--- a/web/src/core/safety.ts
++++ b/web/src/core/safety.ts
+@@ -8,9 +8,12 @@ export class SafetyController {
+   stopAll(): void {
+     // Never wait on network / SDK for local safety actions.
+     this.tokenProvider?.cancel();
++    // Invalidate the voice generation BEFORE pausing video: the video 'pause'
++    // handler removes video-induced muting. In the opposite order that handler
++    // could start an SDK unmute immediately before STOPP.
++    void this.voice.stop();
+     this.media.stopAll();
+     this.dispatcher.discardPending();
+-    void this.voice.stop();
+   }
+   coachOff(): void {
+     this.tokenProvider?.cancel();
+diff --git a/web/src/voice/elevenlabs.ts b/web/src/voice/elevenlabs.ts
+index c80a01c..5beb259 100644
+--- a/web/src/voice/elevenlabs.ts
++++ b/web/src/voice/elevenlabs.ts
+@@ -52,14 +52,11 @@ export class ElevenLabsAdapter extends BaseVoiceAdapter {
+         connectionType: 'webrtc',
+         dynamicVariables: {role: context.role, proactivity_enabled: context.proactivityEnabled},
+         clientTools,
+-        onMessage: message => {
+-          if (!this.valid(gen)) return;
+-          // The SDK onMessage user callback represents the final user_transcript event.
+-          // Tentative text and AI output are never confirmation evidence.
+-          if (message.role === 'user' && typeof message.message === 'string') {
+-            this.emit({type:'finalUserText', text: message.message, generationId:gen});
+-          }
+-        },
++        // Deliberately do NOT translate onMessage to finalUserText. The
++        // documented SDK callback can contain TENTATIVE user transcripts;
++        // neither role==='user' nor message text proves ASR finality.
++        // Until a verified final-only SDK event exists, voice tool confirmation
++        // is fail-closed and the user confirms proposed logbook entries by touch.
+         onDisconnect: () => { if (this.valid(gen)) void this.stop(); },
+         onError: () => {
+           // Do not expose upstream details in UI or logs.
+diff --git a/web/tests/voice.test.ts b/web/tests/voice.test.ts
+index a8af7e7..dcdb88c 100644
+--- a/web/tests/voice.test.ts
++++ b/web/tests/voice.test.ts
+@@ -36,6 +36,17 @@ test('STOPP during delayed connection invalidates before promise settles',async(
+   await task;
+   assert.equal(mock.getState().phase,'off');
+ });
++test('STOPP invalidates Voice BEFORE video pause can remove suppression',async()=>{
++  const {mock,dispatcher}=setup();
++  await mock.start(context);
++  await mock.setVideoSuppressed(true);
++  let phaseDuringPause='';
++  const media={stopAll(){phaseDuringPause=mock.getState().phase;void mock.setVideoSuppressed(false);}};
++  const safety=new SafetyController(mock,media,dispatcher);
++  safety.stopAll();
++  assert.equal(phaseDuringPause,'off');
++  assert.equal(mock.getState().phase,'off');
++});
+ test('stale agent tool after STOPP is rejected',async()=>{
+   const {mock,safety,store}=setup();
+   await mock.start(context);

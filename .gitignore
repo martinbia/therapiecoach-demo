@@ -1,0 +1,11 @@
+# ZIP uploads from browser/Codespaces must not be accidentally committed.
+*.zip
+**/node_modules/
+**/dist/
+**/.build/
+**/.env
+**/.dev.vars
+**/.dev.vars.*
+**/.wrangler/
+**/__pycache__/
+*.pyc

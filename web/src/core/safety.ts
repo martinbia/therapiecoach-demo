@@ -8,9 +8,12 @@ export class SafetyController {
   stopAll(): void {
     // Never wait on network / SDK for local safety actions.
     this.tokenProvider?.cancel();
+    // Invalidate the voice generation BEFORE pausing video: the video 'pause'
+    // handler removes video-induced muting. In the opposite order that handler
+    // could start an SDK unmute immediately before STOPP.
+    void this.voice.stop();
     this.media.stopAll();
     this.dispatcher.discardPending();
-    void this.voice.stop();
   }
   coachOff(): void {
     this.tokenProvider?.cancel();

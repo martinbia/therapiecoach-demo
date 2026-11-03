@@ -4,10 +4,18 @@ on:
     branches: [main, frontend]
     paths:
       - 'web/**'
+      - 'worker/**'
+      - 'agent/**'
+      - 'tests/**'
+      - 'docs/**'
       - '.github/workflows/frontend-pages.yml'
   pull_request:
     paths:
       - 'web/**'
+      - 'worker/**'
+      - 'agent/**'
+      - 'tests/**'
+      - 'docs/**'
       - '.github/workflows/frontend-pages.yml'
   workflow_dispatch:
 
@@ -30,15 +38,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # The source ZIP is intentionally delivered without a fabricated lockfile.
-      # Commit the npm-generated package-lock.json after the first successful install,
-      # then switch this step to npm ci for fully reproducible installs.
-      - name: Install pinned direct dependencies
+      # After npm-generated package-lock.json is committed, switch to npm ci.
+      - name: Install frontend dependencies
         run: npm install --no-audit --no-fund
       - name: TypeScript check
         run: npm run typecheck
       - name: Contract and state tests
         run: npm test
+      - name: Verify API contract across web, worker and agent (offline)
+        working-directory: .
+        run: |
+          python3 agent/verify_agent_contract.py
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          python3 tests/preflight.py --root .
+      - name: Install Worker development dependencies (no deployment)
+        working-directory: worker
+        run: npm install --no-audit --no-fund
+      - name: Worker TypeScript and security/rate-limit tests
+        working-directory: worker
+        run: npm run check
+      - name: Full offline HTTP/Token/SDK/Dispatcher integration
+        working-directory: .
+        run: node --experimental-loader ./web/tests/sdk-mock-loader.mjs --experimental-transform-types --test tests/end_to_end.test.mjs
       - name: Build static PWA
         env:
           VITE_VOICE_MODE: ${{ vars.VITE_VOICE_MODE || 'mock' }}

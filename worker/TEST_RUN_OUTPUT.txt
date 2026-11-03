@@ -1,0 +1,112 @@
+
+> pflegepfad-access-worker@1.0.0 check
+> npm run typecheck && npm test
+
+
+> pflegepfad-access-worker@1.0.0 typecheck
+> tsc --noEmit
+
+
+> pflegepfad-access-worker@1.0.0 test
+> npm run build:tests && node --test --test-concurrency=1 test/*.test.mjs
+
+
+> pflegepfad-access-worker@1.0.0 build:tests
+> tsc
+
+TAP version 13
+# (node:1392) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: approved request returns exclusively conversationToken and safe headers
+ok 1 - approved request returns exclusively conversationToken and safe headers
+  ---
+  duration_ms: 40.880897
+  type: 'test'
+  ...
+# Subtest: wrong PIN and constant-width digest comparison
+ok 2 - wrong PIN and constant-width digest comparison
+  ---
+  duration_ms: 3.189451
+  type: 'test'
+  ...
+# Subtest: forbidden or missing Origin have no CORS header, no provider call
+ok 3 - forbidden or missing Origin have no CORS header, no provider call
+  ---
+  duration_ms: 2.608789
+  type: 'test'
+  ...
+# Subtest: OPTIONS allowed, preflight forbidden, GET is 405
+ok 4 - OPTIONS allowed, preflight forbidden, GET is 405
+  ---
+  duration_ms: 1.506987
+  type: 'test'
+  ...
+# Subtest: schema, query, Content-Type, JSON, oversized body rejected without provider
+ok 5 - schema, query, Content-Type, JSON, oversized body rejected without provider
+  ---
+  duration_ms: 5.916129
+  type: 'test'
+  ...
+# Subtest: 5 wrong PIN/IP in rolling window, then block even if PIN correct; other IP independent
+ok 6 - 5 wrong PIN/IP in rolling window, then block even if PIN correct; other IP independent
+  ---
+  duration_ms: 8.761557
+  type: 'test'
+  ...
+# Subtest: max 3 reservations/IP/15min, including provider failure
+ok 7 - max 3 reservations/IP/15min, including provider failure
+  ---
+  duration_ms: 4.225824
+  type: 'test'
+  ...
+# Subtest: 12 global reservations/UTC-day, concurrent requests from 20 IP addresses
+ok 8 - 12 global reservations/UTC-day, concurrent requests from 20 IP addresses
+  ---
+  duration_ms: 11.995767
+  type: 'test'
+  ...
+# Subtest: upstream failures 502, and reservation is not refunded
+ok 9 - upstream failures 502, and reservation is not refunded
+  ---
+  duration_ms: 4.283171
+  type: 'test'
+  ...
+# Subtest: failed fetch/timeout rejection 502
+ok 10 - failed fetch/timeout rejection 502
+  ---
+  duration_ms: 2.185697
+  type: 'test'
+  ...
+# Subtest: LIVE_ENABLED=false and missing config/secret/DO/IP fail closed
+ok 11 - LIVE_ENABLED=false and missing config/secret/DO/IP fail closed
+  ---
+  duration_ms: 4.970765
+  type: 'test'
+  ...
+# Subtest: rolling 15m expirations, UTC day rollover and 48h cleanup in SQLite
+ok 12 - rolling 15m expirations, UTC day rollover and 48h cleanup in SQLite
+  ---
+  duration_ms: 0.877742
+  type: 'test'
+  ...
+# Subtest: IP is HMAC-pseudonymized, never retained in SQL rows
+ok 13 - IP is HMAC-pseudonymized, never retained in SQL rows
+  ---
+  duration_ms: 3.577059
+  type: 'test'
+  ...
+# Subtest: upstream timeout aborts stalled fake fetch after 6 seconds
+ok 14 - upstream timeout aborts stalled fake fetch after 6 seconds
+  ---
+  duration_ms: 6003.153422
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6171.353697
